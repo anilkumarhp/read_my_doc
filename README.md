@@ -52,7 +52,21 @@ ollama pull llama3.2
 Confirm the embedding model downloads and ChromaDB round-trips a document before building anything on top of it:
 
 ```bash
-python main.py
+python python3 -c "
+from chromadb.utils import embedding_functions
+import chromadb
+
+# This line downloads the embedding model on first run.
+embedding_fn = embedding_functions.SentenceTransformerEmbeddingFunction(
+    model_name='all-MiniLM-L6-v2'
+)
+
+client = chromadb.Client()
+collection = client.create_collection('smoke_test', embedding_function=embedding_fn)
+collection.add(documents=['the sky is blue'], ids=['1'])
+result = collection.query(query_texts=['what color is the sky'], n_results=1)
+print('Retrieved:', result['documents'][0][0])
+"
 ```
 
 Expected output: `Retrieved: the sky is blue`

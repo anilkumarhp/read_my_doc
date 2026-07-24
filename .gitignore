@@ -1,0 +1,76 @@
+# ==============================================================================
+# 1. RAG-SPECIFIC EXCLUSIONS (Vector DBs, Data Sources & Evaluation)
+# ==============================================================================
+# Local document ingestion folder (PDFs, TXT, CSVs used to build context)
+data/
+documents/
+inputs/
+
+# Local Vector Databases & Caches
+chroma/
+.chroma/
+faiss_index/
+.faiss/
+lance/
+.lancedb/
+qdrant_storage/
+milvus_data/
+
+# Model Weights & Local LLM Caches (e.g., Hugging Face, Ollama)
+models/
+.cache/huggingface/
+.cache/ollama/
+
+# Evaluation, Tracing & Log outputs (e.g., Ragas, LangSmith, Phoenix)
+.ragas/
+phoenix-data/
+*.log
+evaluation_results.csv
+
+# ==============================================================================
+# 2. SECURITY & ENVIRONMENT (API Keys & Secrets)
+# ==============================================================================
+# Contains OPENAI_API_KEY, ANTHROPIC_API_KEY, PINECONE_API_KEY, etc.
+.env
+.env.[a-zA-Z]*
+!.env.example
+secret.json
+
+# ==============================================================================
+# 3. STANDARD PYTHON EXCLUSIONS
+# ==============================================================================
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+*.venv/
+
+# Package Management & Builds
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# IDEs & System Files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

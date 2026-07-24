@@ -52,7 +52,7 @@ ollama pull llama3.2
 Confirm the embedding model downloads and ChromaDB round-trips a document before building anything on top of it:
 
 ```bash
-python python3 -c "
+python -c "
 from chromadb.utils import embedding_functions
 import chromadb
 

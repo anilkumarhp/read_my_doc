@@ -75,7 +75,7 @@ Expected output: `Retrieved: the sky is blue`
 
 | File                                     | Purpose                                                        |
 | ---------------------------------------- | -------------------------------------------------------------- |
-| [main.py](main.py)                       | Smoke test - verifies embeddings + ChromaDB work end to end    |
+| [main.py](main.py)                       | Smoke test -                                                   |
 | [ingest.py](ingest.py)                   | Phase 1 - load documents, split into chunks, store in ChromaDB |
 | [query.py](query.py)                     | Phase 2 - retrieve relevant chunks, generate a cited answer    |
 | [evaluate.py](evaluate.py)               | Phase 3 - check answers are grounded in retrieved text         |

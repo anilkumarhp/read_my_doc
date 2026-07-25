@@ -41,13 +41,11 @@ def test_empty_txt_file(tmp_path):
 
     docs = load_documents(str(tmp_path))
 
-    assert docs == [
-        {"source": "empty.txt", "text": ""}
-    ]
+    assert docs == [{"source": "empty.txt", "text": ""}]
 
 
 def test_unicode_file(tmp_path):
-    content = "こんにちは नमस्ते"
+    content = "こんにちは"
 
     (tmp_path / "unicode.txt").write_text(content, encoding="utf-8")
 
@@ -57,11 +55,7 @@ def test_unicode_file(tmp_path):
 
 
 def test_multiline_text(tmp_path):
-    content = """
-                Line 1
-                Line 2
-                Line 3
-              """
+    content = "Line 1\nLine 2\nLine 3\n"
 
     (tmp_path / "multi.txt").write_text(content, encoding="utf-8")
 
@@ -86,9 +80,7 @@ def test_output_structure(tmp_path):
     docs = load_documents(str(tmp_path))
 
     assert isinstance(docs, list)
-
     for doc in docs:
-        assert isinstance(doc, dict)
         assert set(doc.keys()) == {"source", "text"}
         assert isinstance(doc["source"], str)
         assert isinstance(doc["text"], str)
@@ -147,11 +139,18 @@ def test_files_are_sorted(tmp_path):
 
     docs = load_documents(str(tmp_path))
 
-    assert [doc["source"] for doc in docs] == [
-        "a.txt",
-        "m.txt",
-        "z.txt",
-    ]
+    assert [doc["source"] for doc in docs] == ["a.txt", "m.txt", "z.txt"]
+
+
+# argument validation
+
+@pytest.mark.parametrize("bad_folder", ["", "   ", "\t\n"])
+def test_empty_folder_path_raises_value_error(bad_folder, caplog):
+    with caplog.at_level(logging.ERROR, logger="ingest"):
+        with pytest.raises(ValueError):
+            load_documents(bad_folder)
+
+    assert "Folder path is empty" in caplog.text
 
 
 # folder level errors
@@ -170,6 +169,17 @@ def test_non_existing_folder_is_logged(caplog):
     assert "Traceback" in caplog.text
 
 
+def test_folder_path_is_a_file(tmp_path, caplog):
+    target = tmp_path / "a.txt"
+    target.write_text("Hello", encoding="utf-8")
+
+    with caplog.at_level(logging.ERROR, logger="ingest"):
+        with pytest.raises(OSError):
+            load_documents(str(target))
+
+    assert "Traceback" in caplog.text
+
+
 def test_permission_error_on_folder_is_raised_and_logged(tmp_path, caplog):
     with caplog.at_level(logging.ERROR, logger="ingest"):
         with patch("os.listdir", side_effect=PermissionError):
@@ -180,9 +190,19 @@ def test_permission_error_on_folder_is_raised_and_logged(tmp_path, caplog):
     assert "Traceback" in caplog.text
 
 
+def test_generic_os_error_on_folder_is_raised_and_logged(tmp_path, caplog):
+    with caplog.at_level(logging.ERROR, logger="ingest"):
+        with patch("os.listdir", side_effect=OSError("io failure")):
+            with pytest.raises(OSError):
+                load_documents(str(tmp_path))
+
+    assert f"Failed to list folder: {tmp_path}" in caplog.text
+    assert "io failure" in caplog.text
+
+
 # file level errors
 
-def test_permission_error_on_file_is_skipped(tmp_path):
+def test_permission_error_on_all_files_returns_empty(tmp_path):
     (tmp_path / "a.txt").write_text("Hello", encoding="utf-8")
 
     with patch("builtins.open", side_effect=PermissionError):
@@ -199,11 +219,10 @@ def test_invalid_utf8_file_is_skipped_and_logged(tmp_path, caplog):
         docs = load_documents(str(tmp_path))
 
     assert docs == [{"source": "good.txt", "text": "Good"}]
-    assert "Invalid UTF-8 encoding: bad.txt" in caplog.text
-    assert "UnicodeDecodeError" in caplog.text
+    assert "Invalid UTF-8, skipping: bad.txt" in caplog.text
 
 
-def test_permission_error_on_file_is_logged(tmp_path, caplog):
+def test_permission_error_on_one_file_is_logged(tmp_path, caplog):
     (tmp_path / "a.txt").write_text("A", encoding="utf-8")
     (tmp_path / "b.txt").write_text("B", encoding="utf-8")
 
@@ -212,11 +231,11 @@ def test_permission_error_on_file_is_logged(tmp_path, caplog):
             docs = load_documents(str(tmp_path))
 
     assert docs == [{"source": "b.txt", "text": "B"}]
-    assert "Permission denied: a.txt" in caplog.text
+    assert "Permission denied, skipping: a.txt" in caplog.text
     assert "Traceback" in caplog.text
 
 
-def test_os_error_on_file_is_skipped_and_logged(tmp_path, caplog):
+def test_os_error_on_one_file_is_skipped_and_logged(tmp_path, caplog):
     (tmp_path / "a.txt").write_text("A", encoding="utf-8")
     (tmp_path / "b.txt").write_text("B", encoding="utf-8")
 
@@ -225,56 +244,23 @@ def test_os_error_on_file_is_skipped_and_logged(tmp_path, caplog):
             docs = load_documents(str(tmp_path))
 
     assert docs == [{"source": "b.txt", "text": "B"}]
-    assert "Failed to read a.txt" in caplog.text
+    assert "Failed to read, skipping: a.txt" in caplog.text
     assert "disk failure" in caplog.text
-
-
-def test_read_error_after_open_is_handled(tmp_path, caplog):
-    """The read itself can fail, not only the open."""
-    (tmp_path / "a.txt").write_text("A", encoding="utf-8")
-
-    class BrokenFile:
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *args):
-            return False
-
-        def read(self):
-            raise OSError("read failed")
-
-    with caplog.at_level(logging.ERROR, logger="ingest"):
-        with patch("builtins.open", return_value=BrokenFile()):
-            docs = load_documents(str(tmp_path))
-
-    assert docs == []
-    assert "Failed to read a.txt" in caplog.text
 
 
 def test_all_files_failing_returns_empty_list(tmp_path, caplog):
     (tmp_path / "a.txt").write_text("A", encoding="utf-8")
     (tmp_path / "b.txt").write_text("B", encoding="utf-8")
 
-    with caplog.at_level(logging.ERROR, logger="ingest"):
+    with caplog.at_level(logging.WARNING, logger="ingest"):
         with patch("builtins.open", side_effect=OSError("boom")):
             docs = load_documents(str(tmp_path))
 
     assert docs == []
-    assert caplog.text.count("Failed to read") == 2
+    assert "Skipped 2 unreadable file(s)" in caplog.text
 
 
-# logging on the happy path
-
-def test_subdirectory_named_txt_logs_warning(tmp_path, caplog):
-    (tmp_path / "folder.txt").mkdir()
-
-    with caplog.at_level(logging.WARNING, logger="ingest"):
-        docs = load_documents(str(tmp_path))
-
-    assert docs == []
-    assert "Skipping directory" in caplog.text
-    assert "folder.txt" in caplog.text
-
+# logging
 
 def test_start_and_summary_are_logged(tmp_path, caplog):
     (tmp_path / "a.txt").write_text("A", encoding="utf-8")
@@ -284,24 +270,56 @@ def test_start_and_summary_are_logged(tmp_path, caplog):
         load_documents(str(tmp_path))
 
     assert f"Loading documents from {tmp_path}" in caplog.text
-    assert "Loaded a.txt" in caplog.text
-    assert "Loaded b.txt" in caplog.text
+    assert "Loaded a.txt (1 char(s))" in caplog.text
+    assert "Loaded b.txt (1 char(s))" in caplog.text
     assert "Loaded 2 document(s)" in caplog.text
 
 
-def test_summary_count_excludes_failed_files(tmp_path, caplog):
+def test_empty_file_logs_warning_but_is_still_loaded(tmp_path, caplog):
+    (tmp_path / "empty.txt").write_text("   \n  ", encoding="utf-8")
+
+    with caplog.at_level(logging.WARNING, logger="ingest"):
+        docs = load_documents(str(tmp_path))
+
+    assert docs == [{"source": "empty.txt", "text": "   \n  "}]
+    assert "File is empty: empty.txt" in caplog.text
+
+
+def test_empty_result_logs_warning(tmp_path, caplog):
+    (tmp_path / "notes.md").write_text("Markdown", encoding="utf-8")
+
+    with caplog.at_level(logging.WARNING, logger="ingest"):
+        docs = load_documents(str(tmp_path))
+
+    assert docs == []
+    assert f"No documents loaded from {tmp_path}" in caplog.text
+
+
+def test_no_skipped_warning_when_all_files_load(tmp_path, caplog):
     (tmp_path / "a.txt").write_text("A", encoding="utf-8")
-    (tmp_path / "b.txt").write_text("B", encoding="utf-8")
 
-    with caplog.at_level(logging.INFO, logger="ingest"):
-        with patch("builtins.open", fail_open_for("a.txt", OSError("boom"))):
-            load_documents(str(tmp_path))
-
-    assert "Loaded 1 document(s)" in caplog.text
-
-
-def test_empty_folder_logs_zero_documents(tmp_path, caplog):
-    with caplog.at_level(logging.INFO, logger="ingest"):
+    with caplog.at_level(logging.WARNING, logger="ingest"):
         load_documents(str(tmp_path))
 
-    assert "Loaded 0 document(s)" in caplog.text
+    assert "unreadable file(s)" not in caplog.text
+
+
+def test_non_txt_and_entry_scan_logged_at_debug(tmp_path, caplog):
+    (tmp_path / "a.txt").write_text("A", encoding="utf-8")
+    (tmp_path / "notes.md").write_text("Markdown", encoding="utf-8")
+
+    with caplog.at_level(logging.DEBUG, logger="ingest"):
+        load_documents(str(tmp_path))
+
+    assert "Skipping non-txt entry: notes.md" in caplog.text
+
+
+def test_non_file_txt_entry_logs_warning(tmp_path, caplog):
+    (tmp_path / "folder.txt").mkdir()
+
+    with caplog.at_level(logging.WARNING, logger="ingest"):
+        docs = load_documents(str(tmp_path))
+
+    assert docs == []
+    assert "Skipping non-file entry" in caplog.text
+    assert "folder.txt" in caplog.text

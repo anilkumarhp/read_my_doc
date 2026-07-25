@@ -9,6 +9,7 @@ inputs/
 # Local Vector Databases & Caches
 chroma/
 .chroma/
+chroma_store/
 faiss_index/
 .faiss/
 lance/
@@ -25,6 +26,7 @@ models/
 .ragas/
 phoenix-data/
 *.log
+logs/
 evaluation_results.csv
 
 # ==============================================================================
@@ -44,6 +46,11 @@ __pycache__/
 *.py[cod]
 *$py.class
 .python-version
+
+# Test & tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 
 # Virtual environments
 venv/
@@ -75,3 +82,8 @@ share/python-wheels/
 .idea/
 .DS_Store
 Thumbs.db
+
+
+# Others
+
+docs/

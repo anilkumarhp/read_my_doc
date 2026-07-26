@@ -13,7 +13,9 @@ Usage:
 
 import argparse
 import logging
+import re
 import sys
+from collections import Counter
 
 import ollama
 
@@ -21,7 +23,9 @@ from query import IndexNotFoundError, generate_answer, retrieve
 
 logger = logging.getLogger(__name__)
 
-JUDGE_MODEL = "llama3.2"
+# A stronger general model than the 3B generator makes a more reliable judge.
+# Swap for a smaller one (e.g. "gemma3:4b") if you want faster, cheaper runs.
+JUDGE_MODEL = "mistral-nemo"
 
 JUDGE_PROMPT = """You are checking whether an answer is faithful to its \
 sources, meaning every factual claim in the answer is actually supported \
@@ -33,8 +37,49 @@ Sources:
 Answer to check:
 {answer}
 
-Respond with exactly one line in this format:
-FAITHFUL: yes|no|partial, """
+Reply with ONE line and nothing else, no explanation, in exactly this format:
+FAITHFUL: yes
+Use "yes" if every claim is supported by the sources, "partial" if some \
+claims are supported but at least one is not, or "no" if the answer is not \
+supported. The first word after the colon must be yes, no, or partial."""
+
+
+def parse_verdict(verdict: str) -> str:
+    """Normalize a judge verdict to 'yes' | 'no' | 'partial' | 'unknown'.
+
+    Tolerant of models that don't follow the format exactly: it looks for a
+    yes/no/partial token after "FAITHFUL:", then falls back to a leading
+    token, and only gives up ("unknown") when neither is present.
+    """
+    text = verdict.strip().lower()
+
+    match = re.search(r"faithful\s*:?\s*(yes|no|partial)", text)
+    if match:
+        return match.group(1)
+
+    match = re.match(r"(yes|no|partial)\b", text)
+    if match:
+        return match.group(1)
+
+    return "unknown"
+
+
+def judge_faithfulness(retrieved, answer: str) -> str:
+    sources_text = "\n\n".join(
+        f"[{i + 1}] {chunk}" for i, (chunk, _meta) in enumerate(retrieved)
+    )
+    prompt = JUDGE_PROMPT.format(sources=sources_text, answer=answer)
+    try:
+        response = ollama.chat(
+            model=JUDGE_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        return response["message"]["content"].strip()
+    except Exception as e:
+        # A judge failure must not abort the run; report it as an unknown
+        # verdict but log the cause so it is not lost.
+        logger.exception("Judge call failed with model %s", JUDGE_MODEL)
+        return f"FAITHFUL: unknown, judge call failed ({e})"
 
 
 def judge_faithfulness(retrieved, answer: str) -> str:
@@ -105,12 +150,18 @@ def run_eval(questions_file: str) -> None:
         print("No answers were evaluated.")
         return
 
-    faithful_count = sum(1 for _, v in results if v.upper().startswith("FAITHFUL: YES"))
+    counts = Counter(parse_verdict(v) for _, v in results)
+    faithful_count = counts["yes"]
     logger.info(
-        "%d/%d answers judged fully faithful", faithful_count, len(results)
+        "%d/%d answers judged fully faithful (%s)",
+        faithful_count, len(results), dict(counts),
     )
     print(f"\n{'=' * 50}")
     print(f"{faithful_count}/{len(results)} answers judged fully faithful.")
+    print(
+        f"Breakdown: {counts['yes']} yes, {counts['partial']} partial, "
+        f"{counts['no']} no, {counts['unknown']} unknown."
+    )
 
 
 if __name__ == "__main__":

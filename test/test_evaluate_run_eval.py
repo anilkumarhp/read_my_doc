@@ -76,7 +76,9 @@ def test_faithful_count_only_counts_yes(tmp_path, capsys):
                       side_effect=lambda *a, **k: {"message": {"content": next(verdicts)}}):
         run_eval(path)
 
-    assert "1/3 answers judged fully faithful" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "1/3 answers judged fully faithful" in out
+    assert "Breakdown: 1 yes, 1 partial, 1 no, 0 unknown." in out
 
 
 def test_case_insensitive_yes_is_counted(tmp_path, capsys):
